@@ -85,12 +85,14 @@ class LLMManager:
             raise
 
 class chatbraid(tbraid):
-    def __init__(self, llm_manager, *args, **kwargs):
+    def __init__(self, llm_manager, *args, default_llm_params=None, **kwargs):
         """
         llm_manager: instance of LLMManager or compatible interface.
+        default_llm_params: dict of default key/values to use for all LLM calls if not provided.
         """
         super().__init__(*args, **kwargs)
         self.llm_manager = llm_manager
+        self.default_llm_params = default_llm_params or {}
 
         # Register the LLM handler with higher priority
         self.register(
@@ -107,6 +109,11 @@ class chatbraid(tbraid):
             # Create a shallow copy of the request dict to avoid mutating original
             request_copy = dict(a)
             request_copy['$llm'] = processed_prompt
+
+            # Apply default llm params if not present in request_copy
+            for k, v in self.default_llm_params.items():
+                if k not in request_copy:
+                    request_copy[k] = v
 
             response = self.llm_manager.call(request_copy)
             logger.info(f'LLM response received')
