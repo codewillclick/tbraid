@@ -85,14 +85,27 @@ class LLMManager:
             raise
 
 class chatbraid(tbraid):
-    def __init__(self, llm_manager, *args, default_llm_params=None, **kwargs):
+    def __init__(self, llm_manager=None, *args, default_llm_params=None, model=None, temperature=None, max_tokens=None, **kwargs):
         """
         llm_manager: instance of LLMManager or compatible interface.
+                     If None, a default LLMManager is created using environment variables.
         default_llm_params: dict of default key/values to use for all LLM calls if not provided.
+        model, temperature, max_tokens, ... : common LLM parameters to set defaults easily.
         """
+        if llm_manager is None:
+            import os
+            openai_key = os.getenv('OPENAI_API_KEY')
+            llm_manager = LLMManager(openai_api_key=openai_key)
         super().__init__(*args, **kwargs)
         self.llm_manager = llm_manager
-        self.default_llm_params = default_llm_params or {}
+
+        # Start with provided default_llm_params or empty dict
+        self.default_llm_params = dict(default_llm_params or {})
+
+        # Add any explicit LLM params passed to constructor
+        for k, v in [('model', model), ('temperature', temperature), ('max_tokens', max_tokens)]:
+            if v is not None:
+                self.default_llm_params[k] = v
 
         # Register the LLM handler with higher priority
         self.register(
