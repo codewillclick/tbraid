@@ -101,6 +101,41 @@ class chatbraid(tbraid):
     def _handle_llm_call(self, _, a, ts):
         logger.info(f'Sending LLM request: {a}')
         try:
+            # Process the prompt(s) with current tstack (ts)
+            processed_prompt = self._process(a.get('$llm'), ts)
+
+            # Create a shallow copy of the request dict to avoid mutating original
+            request_copy = dict(a)
+            request_copy['$llm'] = processed_prompt
+
+            response = self.llm_manager.call(request_copy)
+            logger.info(f'LLM response received')
+            return response
+        except Exception as e:
+            logger.error(f'LLM call failed: {e}', exc_info=True)
+            raise
+```
+
+chatbraid.py
+```python
+<<<<<<< SEARCH
+class chatbraid(tbraid):
+    def __init__(self, llm_manager, *args, **kwargs):
+        """
+        llm_manager: instance of LLMManager or compatible interface.
+        """
+        super().__init__(*args, **kwargs)
+        self.llm_manager = llm_manager
+
+        # Register the LLM handler with higher priority
+        self.register(
+            lambda a: isinstance(a, dict) and '$llm' in a,
+            self._handle_llm_call
+        )
+
+    def _handle_llm_call(self, _, a, ts):
+        logger.info(f'Sending LLM request: {a}')
+        try:
             response = self.llm_manager.call(a)
             logger.info(f'LLM response received')
             return response
