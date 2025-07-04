@@ -37,3 +37,8 @@ See how nice that looks?  Fires all three LLM requests at the same time, with q3
 
 Really that's all there is to this little module, simplifying the appearance and utility of asynchronous thread behavior, plus LLMs.
 
+
+## Misc.
+
+Tests that auto-write themselves are the real magic of AI-assisted coding.  Even if they start off a little incorrect and self-defeating.  Are these things bypassing the entire llm call itself?
+
