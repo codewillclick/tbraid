@@ -115,32 +115,6 @@ class chatbraid(tbraid):
             logger.error(f'LLM call failed: {e}', exc_info=True)
             raise
 
-chatbraid.py
-```python
-<<<<<<< SEARCH
-class chatbraid(tbraid):
-    def __init__(self, llm_manager, *args, **kwargs):
-        """
-        llm_manager: instance of LLMManager or compatible interface.
-        """
-        super().__init__(*args, **kwargs)
-        self.llm_manager = llm_manager
-
-        # Register the LLM handler with higher priority
-        self.register(
-            lambda a: isinstance(a, dict) and '$llm' in a,
-            self._handle_llm_call
-        )
-
-    def _handle_llm_call(self, _, a, ts):
-        logger.info(f'Sending LLM request: {a}')
-        try:
-            response = self.llm_manager.call(a)
-            logger.info(f'LLM response received')
-            return response
-        except Exception as e:
-            logger.error(f'LLM call failed: {e}', exc_info=True)
-            raise
 
 # Example usage if run as main:
 if __name__ == '__main__':
@@ -162,7 +136,11 @@ if __name__ == '__main__':
         'query2': {
             '$llm': 'Tell me a joke.'
             # model and provider default to openai and gpt-4.1-mini
-        }
+        },
+        'q3': [
+            {'$wait':['query1']},
+            {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'}
+        ]
     })
 
     cb.wait()
