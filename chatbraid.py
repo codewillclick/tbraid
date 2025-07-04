@@ -50,7 +50,9 @@ class LLMManager:
             {"role": "user", "content": prompt}
         ]
 
-        response = openai.ChatCompletion.create(
+        # Use new OpenAI API client style
+        client = openai.ChatCompletion()
+        response = client.create(
             model=model,
             messages=messages
         )
