@@ -185,8 +185,7 @@ if __name__ == '__main__':
             {'$wait':['query1']},
             {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'}
         ]
-    })
+    }).wait()
 
-    cb.wait()
     for k in cb:
         print(f'{k}: {cb[k]}')
