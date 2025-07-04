@@ -4,7 +4,9 @@ import logging
 import subprocess
 import json
 import requests
+import openai
 from tbraid import tbraid
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,6 @@ class LLMManager:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
     def _call_openai(self, request):
-        import openai
         if not self.openai_api_key:
             raise ValueError("OpenAI API key not set")
         openai.api_key = self.openai_api_key
@@ -51,7 +52,6 @@ class LLMManager:
         ]
 
         # Use new OpenAI API client style per openai>=1.0.0
-        from openai import OpenAI
         client = OpenAI(api_key=self.openai_api_key)
         response = client.chat.completions.create(
             model=model,

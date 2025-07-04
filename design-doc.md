@@ -47,4 +47,6 @@ chatbraid:
 			temperature:<temperature>,
 			... so forth
 		}
+- handles different llm api providers automatically or with minimal fuss
+	- intermediate class for explicit llm logic may be needed
 

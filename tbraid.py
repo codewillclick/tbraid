@@ -22,6 +22,10 @@ class NoMatchedFunctionError(Exception): pass
 class WaitTimeoutError(Exception): pass
 
 class tablestack:
+	''' Stack of dict-likes, primarily for getter operations, that are all
+	treated like a single dict object, moving down to find keys from the
+	top of the stack to the bottom. '''
+
 	def __init__(self,*r,**kw):
 		self._stack = []
 		for d in r:
@@ -30,10 +34,12 @@ class tablestack:
 			self._stack[-1][k] = v
 	
 	def add(self,d):
+		''' Add a dict-like to the stack of dict-likes for index-getting. '''
 		self._stack.append(d)
 		return self
 	
 	def clone(self):
+		''' Create a copy directly referencing its own stack items. '''
 		return tablestack(*self._stack)
 	
 	def __contains__(self,k):
@@ -87,12 +93,14 @@ class tbraid:
 			self._handle_base_run)
 	
 	def reset(self):
+		''' Clear out initialized properties and kill running threads. '''
 		self._tstack = tablestack(self)
 		self._ttable = {}
 		# TODO: See if we need to go and force-kill whatever threads are running.
 		return self
 	
 	def register(self,check,func):
+		''' Add another check and response for specific object types. '''
 		self._matches.append((check,func))
 		return self
 	
@@ -163,6 +171,7 @@ class tbraid:
 		raise NoMatchedFunctionError(f'ob: {a}')
 	
 	def run(self,ob=None,tt=None,ts=None,**kw):
+		''' Run against a provided json/dict object, execution logic. '''
 		ob = ob or {}
 		ts = ts or self._tstack
 		tt = tt or self._ttable
@@ -207,6 +216,9 @@ class tbraid:
 		return self
 	
 	def wait(self,*r):
+		''' Wait for provided thread-names to finish before continuing. '''
+		# NOTE: There is surely a more elegant to do this than a sleep loop, but
+		#   for now it's reliable so I'll come back to it later.
 		start = time.time()
 		while time.time() < start + self._timeout:
 			kr = list((r if len(r) else self._ttable.keys()))
