@@ -129,5 +129,5 @@ if __name__ == '__main__':
     })
 
     cb.wait()
-    for k in cb._ttable:
-        print(f'{k}: {cb._ttable[k]["value"]}')
+    for k in cb:
+        print(f'{k}: {cb[k]}')
