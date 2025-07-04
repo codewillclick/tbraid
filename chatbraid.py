@@ -115,6 +115,50 @@ class chatbraid(tbraid):
             logger.error(f'LLM call failed: {e}', exc_info=True)
             raise
 
+    def _process(self, prompt, tstack):
+        """
+        Process the prompt input by formatting all prompt strings with tstack.
+
+        prompt: can be
+          - string (user prompt)
+          - tuple/list of two strings (system, user)
+          - list of pairs [ [role, content], ... ] for full conversation
+
+        tstack: tablestack instance used as dict for string formatting
+
+        Returns the processed prompt in the same structure.
+        """
+        def format_str(s):
+            if isinstance(s, str) and '%' in s:
+                try:
+                    return s % tstack
+                except KeyError as e:
+                    logger.warning(f"Missing key {e} in tstack for prompt formatting")
+                    return s
+            return s
+
+        if isinstance(prompt, str):
+            return format_str(prompt)
+        elif isinstance(prompt, (list, tuple)):
+            # If it's a pair of strings (system, user)
+            if len(prompt) == 2 and all(isinstance(x, str) for x in prompt):
+                return tuple(format_str(x) for x in prompt)
+            else:
+                # Assume list of [role, content] pairs
+                processed = []
+                for item in prompt:
+                    if (isinstance(item, (list, tuple)) and len(item) == 2 and
+                        isinstance(item[0], str) and isinstance(item[1], str)):
+                        role, content = item
+                        processed.append([role, format_str(content)])
+                    else:
+                        # Unexpected format, pass through as is
+                        processed.append(item)
+                return processed
+        else:
+            # Unknown type, return as is
+            return prompt
+
 
 # Example usage if run as main:
 if __name__ == '__main__':
