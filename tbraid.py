@@ -213,10 +213,9 @@ class tbraid:
 			logger.debug(f'kr: {kr}\n{self._ttable}')
 			if len([k for k in kr if \
 					self._ttable[k]['state'] in ('done','error')]) == len(kr):
-				return
+				return self
 			time.sleep(self._sleep)
 		raise WaitTimeoutError(f'timeout: {self._timeout}s')
-		return self
 
 
 if __name__ == '__main__':
