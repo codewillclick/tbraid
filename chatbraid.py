@@ -187,10 +187,7 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO)
 
-    openai_key = os.getenv('OPENAI_API_KEY')
-    llm_manager = LLMManager(openai_api_key=openai_key)
-
-    cb = chatbraid(llm_manager)
+    cb = chatbraid(model='gpt-4.1-nano')
 
     cb.run({
         'query1': {

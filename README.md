@@ -42,3 +42,9 @@ Really that's all there is to this little module, simplifying the appearance and
 
 Tests that auto-write themselves are the real magic of AI-assisted coding.  Even if they start off a little incorrect and self-defeating.  Are these things bypassing the entire llm call itself?
 
+
+## To Do
+
+- [ ] Move the __main__ test logic to the tests directory
+- [ ] Review the existing unit tests, since many effectively auto-return True
+
