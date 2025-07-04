@@ -189,10 +189,16 @@ if __name__ == '__main__':
             # model and provider default to openai and gpt-4.1-mini
         },
         'q3': [
-            {'$wait':['query1']},
-            {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'}
+            '@query1',
+            {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'},
+            {'$llm': 'repeat the following verbatim, except with only nouns: ((%($result)s))... remember, only nouns, comma delimited'}
         ]
-    }).wait()
-
+    }).wait('query1','query2')
+    
+    for k in ('query1','query2'):
+        print(f'{k}: {cb[k]}')
+    
+    cb.wait()
+    
     for k in cb:
         print(f'{k}: {cb[k]}')

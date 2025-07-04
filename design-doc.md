@@ -10,6 +10,8 @@ Simplify the use of medium-complexity interwoven concurrent thread behaviors by 
 
 Practice LLM assisted coding around hand-woven abstract classes.
 
+Oops, ended up writing tbraid.py entirely by myself... well, let's test aider's ability to build an extending class for **tbraid**.
+
 
 # Core classes.
 
@@ -21,6 +23,9 @@ tbraid:
 - arrays imply a chain of things to execute in sequence
 	- with the prior item's result passed in under '$result' in the table object
 - all methods are passed in a table object that is a stack of dicts
+- there are some literal aliases, for example...
+	- '@key1,key2,...' -> {$wait:[key1,key2,...]}
+- otherwise, leftover literals are returned and set to 'value' as-is
 
 tablestack:
 - behaves like a dict, but is more like a stack of dicts
@@ -31,4 +36,15 @@ tablestack:
 		- is passed in its own object
 	- when the llms come into play, this becomes useful
 		- for string '%' mod table key insertions '%(key)', like that
+
+chatbraid:
+- extends tbraid, accepts an {$llm:<prompt>} object
+	- which fires off an LLM API connection and response
+	- {
+			$llm:<prompt>,
+			... (optional)...
+			model:<model>,
+			temperature:<temperature>,
+			... so forth
+		}
 
