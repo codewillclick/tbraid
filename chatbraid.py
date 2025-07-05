@@ -59,13 +59,19 @@ class LLMManager:
             model=model,
             messages=messages
         )
-        # Fill meta if provided
+        # Reasonable keys to offer
+        all_props = {
+            'model': model,
+            'usage': getattr(response, 'usage', None),
+            'id': getattr(response, 'id', None),
+            'prompt': copy.deepcopy(messages),
+        }
         if meta is not None:
-            meta['model'] = model
-            meta['usage'] = getattr(response, 'usage', None)
-            meta['id'] = getattr(response, 'id', None)
-            meta['prompt'] = copy.deepcopy(messages)
-            #meta['raw_response'] = response
+            keys_to_assign = set(meta.keys()) & set(all_props.keys())
+            if not keys_to_assign:
+                keys_to_assign = set(all_props.keys())
+            for k in keys_to_assign:
+                meta[k] = all_props[k]
         return response.choices[0].message.content
 
     def _call_ollama(self, request, meta=None):
@@ -88,9 +94,17 @@ class LLMManager:
             )
             output = proc.stdout.strip()
             data = json.loads(output)
+            # Reasonable keys to offer
+            all_props = {
+                'model': model,
+                'raw_response': data,
+            }
             if meta is not None:
-                meta['model'] = model
-                #meta['raw_response'] = data
+                keys_to_assign = set(meta.keys()) & set(all_props.keys())
+                if not keys_to_assign:
+                    keys_to_assign = set(all_props.keys())
+                for k in keys_to_assign:
+                    meta[k] = all_props[k]
             return data.get('response', '')
         except subprocess.CalledProcessError as e:
             logger.error(f"Ollama call failed: {e.stderr}")
@@ -140,10 +154,14 @@ class chatbraid(tbraid):
                 if k not in request_copy:
                     request_copy[k] = v
 
-            # Pass meta dict for this thread if available
+            # Determine meta dict: from $llm['meta'], or create and store in _ttable[key]['meta']
             meta = None
-            if key is not None and hasattr(self, "_ttable") and key in self._ttable:
-                meta = self._ttable[key]
+            if 'meta' in a and isinstance(a['meta'], dict):
+                meta = a['meta']
+            elif key is not None and hasattr(self, "_ttable") and key in self._ttable:
+                meta = {}
+                self._ttable[key]['meta'] = meta
+
             response = self.llm_manager.call(request_copy, meta=meta)
             logger.info(f'LLM response received')
             return response
