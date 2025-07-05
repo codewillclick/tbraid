@@ -16,6 +16,13 @@ logging.basicConfig(
 	format='%(levelname)s (<%(threadName)s>): %(message)s')
 logger = logging.getLogger(__name__)
 
+def _dhas(d,k):
+	try:
+		assert hasattr(d,'keys')
+		return k in d
+	except:
+		return False
+
 class UnfinishedThreadError(Exception): pass
 class KeyOverrideAttemptError(Exception): pass
 class NoMatchedFunctionError(Exception): pass
@@ -53,6 +60,9 @@ class tablestack:
 				except UnfinishedThreadError:
 					a[k] = None
 		return a
+	
+	def top(self,off=0):
+		return self._stack[-1-off]
 
 	def __contains__(self,k):
 		try:
@@ -90,6 +100,7 @@ class tbraid:
 		self._tstack = None
 		self._ttable = None
 		self._matches = []
+		self._akeyid = 0
 		self.reset()
 		# Register returning the leftovers as-is.
 		self.register(
@@ -115,6 +126,10 @@ class tbraid:
 		self.register(
 			lambda a:type(a) is dict and '$run' in a,
 			self._handle_base_run)
+		# Register foreach object.
+		self.register(
+			lambda a:type(a) is dict and '$foreach' in a,
+			self._handle_base_foreach)
 	
 	def reset(self):
 		''' Clear out initialized properties, though no killing threads. '''
@@ -148,19 +163,29 @@ class tbraid:
 		for k,v in self._ttable.items():
 			yield (k,v)
 	
-	def _handle_base_ignore(self,_,a,ts):
+	def _autokey(self,*r):
+		self._akeyid += 1
+		return f'{"".join(r)}_{self._akeyid}'
+	
+	def _handle_base_ignore(self,_,a,ts,*r):
 		logger.info(f'_handle_base_ignore {a}')
 		return a
 	
-	def _handle_base_special_literals(self,_,a,ts):
+	def _handle_base_special_literals(self,_,a,ts,*r):
 		logger.info(f'_handle_base_special_literals {a}')
 		# Alias for {$wait:...}, '@key1,key2,...'
 		if type(a) is str and len(a) and a[0] == '@':
-			r = a.strip()[1:].split(',')
-			return self._handle_base_wait(_,{'$wait':r},ts)
-		return self._handle_base_ignore(_,a,ts)
+			toks = a.strip()[1:].split(',')
+			#return self._handle_base_wait(_,{'$wait':r},ts)
+			return {'$replace':{'$wait':toks}}
+		if hasattr(a,'__call__'):
+			#return self._handle_base_run(_,{'$run':a},ts)
+			return {'$replace':{'$run':a}}
+		# TODO: This should have a check function for its registration so that
+		#   we don't have to call a private method directly here...
+		return self._handle_base_ignore(_,a,ts,*r)
 	
-	def _handle_base_object(self,_,a,ts):
+	def _handle_base_object(self,_,a,ts,*r):
 		logger.info(f'_handle_base_object {a} {ts}')
 		b = dict(a) # <- allow for mutability without affecting source
 		t2 = ts.clone().add({}) # <- same as ^
@@ -177,24 +202,75 @@ class tbraid:
 			return t2['$result']
 		return None
 	
-	def _handle_base_list(self,_,a,ts):
+	def _handle_base_list(self,_,a,ts,*r):
 		logger.info(f'_handle_base_list {a} {ts}')
 		t2 = ts.clone().add({'$result':None})
-		for ob in a:
-			f = self._find_matchfunc(ob)
-			val = f(self,ob,t2)
-			t2['$result'] = val
+		for ob,x in zip(a,range(len(a))):
+			logger.info(f'  base_list[{x}]: {ob}')
+			if False:
+				f = self._find_matchfunc(ob)
+				t2['$result'] = f(self,ob,t2,*r)
+			t2['$result'] = self._process_step(ob,t2,r[0]) # r[0] should be 'key'
 		return t2['$result']
 	
-	def _handle_base_wait(self,_,a,ts):
+	def _handle_base_foreach(self,_,a,ts,*r):
+		logger.info(f'_handle_base_foreach {a} {ts}')
+		# UNCERTAIN: Not sure if 'foreach' is the right keyword here.  Maybe
+		#   something like 'mapparam'?  And what if I want foreach mapping to
+		#   a sequential list intead of a parallel dict?
+		
+		# $foreach has an iterable providing objects to be applied as $param,
+		# copying the incoming object to be returned as values to a parallel
+		# threading dict.
+		items = list(a['$foreach'])
+		logger.debug(f'foreach.items:{items}')
+		akey = self._autokey('foreach:')
+		throt = a['$throttle'] if '$throttle' in a else self._throttle
+		# TODO: '$sub' needs to go in a doc somewhere.
+		# TODO: Maybe move $sub to run(), but simply have $sub prepend all
+		#   normal keys with the parent key, and remove the $sub logic here.
+		subthreads = a['$sub'] if '$sub' in a else False
+		ret = {
+			'$throttle':throt,
+			'$sub':1
+		}
+		kilen = len(str(len(items)))
+		for i in range(len(items)):
+			key = f'{akey}:%0{kilen}i' % (i,) # 'foreach:x:00i' or such
+			'''
+			if subthreads:
+				# Assign to b everything in a, unless it's a plain thread-key.
+				b = {}
+				for k in a:
+					if k[0] == '$':
+						b[k] = a[k]
+					else:
+						b[f'{key}_{k}'] = a[k]
+				del b['$sub']
+			else:
+			'''
+			if True:
+				b = dict(a)
+				if '$throttle' in b:
+					del b['$throttle']
+				if '$throttle' in ts.top():
+					b['$throttle'] = ts.top()['$throttle']
+			# Assign the actual object to $param.
+			b['$param'] = items[i]
+			del b['$foreach']
+			ret[key] = b
+		logger.info(f'foreach replace: {ret}')
+		return {'$replace':ret}
+	
+	def _handle_base_wait(self,_,a,ts,*r):
 		logger.info(f'_handle_base_wait {a} {ts}')
 		assert '$wait' in a
 		assert type(a['$wait']) is list
 		self.wait(*a['$wait'])
 		return ts['$result'] if '$result' in ts else None
 	
-	def _handle_base_run(self,_,a,ts):
-		logger.info(f'_handle_base_run {a} {ts}')
+	def _handle_base_run(self,_,a,ts,*r):
+		logger.info(f'_handle_base_run {a} {ts}, {a["$run"].__name__}')
 		f = a['$run']
 		return f(a,ts)
 	
@@ -209,6 +285,35 @@ class tbraid:
 				return f
 		raise NoMatchedFunctionError(f'ob: {a}')
 	
+	def _process_step(self,a=None,tstack=None,key=None):
+		while not (a is None):
+			# Add in param object for dynamic property availability.
+			ts = tstack.clone().add(a['$param']) \
+				if _dhas(a,'$param') else tstack
+			# $sub is an indicator that normal subkeys need a thread prefix.
+			# It's meant for parallel thread objects that must maintain
+			# searchable reference to their parent key in the final flat
+			# tbraid table.
+			if _dhas(a,'$sub'):
+				b = dict(a)
+				for k in list(b.keys()):
+					if k[0] != '$':
+						b[f'{key}:{k}'] = b[k]
+						del b[k]
+				a = b
+			# Match the correct func to run and run it.
+			f = self._find_matchfunc(a)
+			val = f(self,a,ts,key)
+			# A matchfunc can map to another value using {$replace:<new-val>},
+			# so we don't have private handle methods calling others.
+			logging.info(f'tworker val: {val}')
+			if _dhas(val,'$replace'):
+				logging.info(f'  replacing...\n  ({a})\n  with ({val["$replace"]})')
+				a = val['$replace']
+			else:
+				break
+		return val
+	
 	def run(self,ob=None,tt=None,ts=None,**kw):
 		''' Run against a provided json/dict object, execution logic. '''
 		ob = ob or {}
@@ -216,31 +321,36 @@ class tbraid:
 		tt = tt or self._ttable
 		if type(ob) in (list,tuple):
 			obx = {}
-			obx['$root'] = ob # should only apply to root run object
+			obx['[:root:]'] = ob # should only apply to root run object
 			ob = obx
 		for k,v in kw.items():
 			ob[k] = v
-		special = set(['$throttle','$async'])
+		# TODO: Unit tests for each of these special keys.
+		special = set([
+			'$throttle','$async','$replace','$param','$sub','$result'])
 		throt = self._throttle
 		if '$throttle' in ob:
 			throt = ob['$throttle']
+		# NOTE: Looks like each run() has its own semaphore, which prevents some
+		#   problems, but leaves the whole open to rampant sub-threading.
 		# Worker function to handle various input types.
 		sem = threading.Semaphore(throt)
 		def tworker(a,tstack,key):
-			f = self._find_matchfunc(a)
 			with sem:
 				try:
-					val = f(self,a,tstack)
+					val = self._process_step(a,tstack,key)
 					tt[key]['value'] = val
 					tt[key]['state'] = 'done'
 				except Exception as e:
 					trace = traceback.format_exc()
-					logging.warn(f'tworker {key}:({a}), exception:\n{trace}')
+					logging.warning(f'tworker {key}:({a}), exception:\n{trace}')
 					tt[key]['state'] = 'error'
 		# Loop through keys for threads to run.
 		added = set()
 		for k,v in ob.items():
 			if k in special:
+				continue
+			if k[0] == '$':
 				continue
 			if k in tt:
 				raise KeyOverrideAttemptError(k)
@@ -260,7 +370,7 @@ class tbraid:
 	
 	def wait(self,*r):
 		''' Wait for provided thread-names to finish before continuing. '''
-		# NOTE: There is surely a more elegant to do this than a sleep loop, but
+		# NOTE: There are more elegant ways to do this than a sleep loop, but
 		#   for now it's reliable so I'll come back to it later.
 		start = time.time()
 		while time.time() < start + self._timeout:
@@ -275,41 +385,59 @@ class tbraid:
 
 if __name__ == '__main__':
 	import pprint
+	
+	if True:
+		b = tbraid(interval=.1)
+		b.run({
+			'thingo1':{
+				'a':1,
+				'b':2
+			},
+			'thingo2':[
+				{'c':3},
+				{'d':4},
+				{'$wait':['thingo3']},
+				{'e':5}
+			],
+			'thingo3':{
+				'$run':(lambda *r:time.sleep(.75))
+			}
+		})
+		print('DANG BOI')
+		b.wait()
+		print('BOI DANGO!')
+		pprint.pprint(b._ttable,indent=2)
 
-	b = tbraid(interval=.1)
-	b.run({
-		'thingo1':{
-			'a':1,
-			'b':2
-		},
-		'thingo2':[
-			{'c':3},
-			{'d':4},
-			{'$wait':['thingo3']},
-			{'e':5}
-		],
-		'thingo3':{
-			'$run':(lambda *r:time.sleep(.75))
-		}
-	})
-	print('DANG BOI')
-	b.wait()
-	print('BOI DANGO!')
-	pprint.pprint(b._ttable,indent=2)
-
-	c = tbraid().run([
-		{
-			'set':1,
-			'some':2,
-			'vars':3,
-			'here': [
-				{'$run':(lambda *r:time.sleep(.5))},
-				4
-			]
-		},
-		{
-			'$run':lambda a,b:print(a,dict(b))
-		}
-	]).wait()
-	pprint.pprint(c._ttable,indent=2)
+		c = tbraid().run([
+			{
+				'set':1,
+				'some':2,
+				'vars':3,
+				'here': [
+					{'$run':(lambda *r:time.sleep(.5))},
+					4
+				]
+			},
+			(lambda a,t:print(f'RUNONCE! {a},{dict(t)}',file=sys.stderr)),
+			{
+				'for-here': {
+					'$foreach':({'c':c} for c in 'wafflehaus'),
+					'$throttle':3,
+					'dees': {
+						'a':lambda a,t:f'char:{t["c"]}',
+						'b':lambda a,t:f'whole:{t}',
+						'$sub':1
+					},
+					'$sub':1
+				}
+			}
+		]).wait()
+		pprint.pprint(c._ttable,indent=2)
+	
+	if False:
+		d = tbraid().run([
+			123,
+			(lambda a,t:print(f'RUNONCE! {a},{dict(t)}',file=sys.stderr)),
+			321
+		])
 
