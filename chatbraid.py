@@ -15,7 +15,7 @@ class LLMManager:
         self.openai_api_key = openai_api_key
         self.ollama_path = ollama_path
 
-    def call(self, request):
+    def call(self, request, meta=None):
         """
         Dispatch LLM call based on request dict.
         Expected format:
@@ -25,16 +25,17 @@ class LLMManager:
             "model": "<model_name>" (optional),
             ... other provider-specific params ...
         }
+        meta: optional dict to be filled with extra info from the LLM response.
         """
         provider = request.get('provider', 'openai')
         if provider == 'openai':
-            return self._call_openai(request)
+            return self._call_openai(request, meta=meta)
         elif provider == 'ollama':
-            return self._call_ollama(request)
+            return self._call_ollama(request, meta=meta)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def _call_openai(self, request):
+    def _call_openai(self, request, meta=None):
         if not self.openai_api_key:
             raise ValueError("OpenAI API key not set")
         openai.api_key = self.openai_api_key
@@ -57,9 +58,15 @@ class LLMManager:
             model=model,
             messages=messages
         )
+        # Fill meta if provided
+        if meta is not None:
+            meta['model'] = model
+            meta['usage'] = getattr(response, 'usage', None)
+            meta['id'] = getattr(response, 'id', None)
+            meta['raw_response'] = response
         return response.choices[0].message.content
 
-    def _call_ollama(self, request):
+    def _call_ollama(self, request, meta=None):
         model = request.get('model')
         if not model:
             raise ValueError("Ollama model not specified")
@@ -79,6 +86,9 @@ class LLMManager:
             )
             output = proc.stdout.strip()
             data = json.loads(output)
+            if meta is not None:
+                meta['model'] = model
+                meta['raw_response'] = data
             return data.get('response', '')
         except subprocess.CalledProcessError as e:
             logger.error(f"Ollama call failed: {e.stderr}")
@@ -113,7 +123,7 @@ class chatbraid(tbraid):
             self._handle_llm_call
         )
 
-    def _handle_llm_call(self, _, a, ts, *r):
+    def _handle_llm_call(self, _, a, ts, key=None, *r):
         logger.info(f'Sending LLM request: {a}')
         try:
             # Process the prompt(s) with current tstack (ts)
@@ -128,7 +138,11 @@ class chatbraid(tbraid):
                 if k not in request_copy:
                     request_copy[k] = v
 
-            response = self.llm_manager.call(request_copy)
+            # Pass meta dict for this thread if available
+            meta = None
+            if key is not None and hasattr(self, "_ttable") and key in self._ttable:
+                meta = self._ttable[key]
+            response = self.llm_manager.call(request_copy, meta=meta)
             logger.info(f'LLM response received')
             return response
         except Exception as e:
