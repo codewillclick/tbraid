@@ -156,8 +156,8 @@ class chatbraid(tbraid):
 
             # Determine meta dict: from $llm['meta'], or create and store in _ttable[key]['meta']
             meta = None
-            if 'meta' in a and isinstance(a['meta'], dict):
-                meta = a['meta']
+            if 'meta' in a:
+                meta = a['meta'] if isinstance(a['meta'], dict) else {}
                 if key is not None and hasattr(self, "_ttable") and key in self._ttable:
                     self._ttable[key]['meta'] = meta
 
@@ -259,7 +259,8 @@ if __name__ == '__main__':
                 lambda a,t:f'{dict(t.matchitems("*dabois:*")).values()}',
                 {
                     '$llm':'90 words, wax poetic over the associations and relatedness between the following names and their origins: \n%($result)s',
-                    'model':'gpt-4.1-nano'
+                    'model':'gpt-4.1-nano',
+                    'meta':{'usage':1}
                 }
             ]
         }).wait()
