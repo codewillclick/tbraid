@@ -113,7 +113,7 @@ class chatbraid(tbraid):
             self._handle_llm_call
         )
 
-    def _handle_llm_call(self, _, a, ts):
+    def _handle_llm_call(self, _, a, ts, *r):
         logger.info(f'Sending LLM request: {a}')
         try:
             # Process the prompt(s) with current tstack (ts)
@@ -184,31 +184,52 @@ class chatbraid(tbraid):
 if __name__ == '__main__':
     import time
     import os
+    import pprint
 
     logging.basicConfig(level=logging.INFO)
+    
+    if False:
+        cb = chatbraid(model='gpt-4.1-nano').run({
+            'query1': {
+                '$llm': 'What is the capital of France?',
+                'model': 'gpt-4.1-mini'
+            },
+            'query2': {
+                '$llm': 'Tell me a joke.'
+                # model and provider default to openai and gpt-4.1-mini
+            },
+            'q3': [
+                '@query1',
+                {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'},
+                {'$llm': 'repeat the following verbatim, except with only nouns: ((%($result)s))... remember, only nouns, comma delimited'}
+            ]
+        }).wait('query1','query2')
+        
+        for k in ('query1','query2'):
+            print(f'{k}: {cb[k]}')
+        
+        cb.wait()
+        
+        for k in cb:
+            print(f'{k}: {cb[k]}')
+    
+    if True:
+        cb = chatbraid().run({
+            'dabois': {
+                '$foreach':({'name':s} for s in ['bob','bass','richards']),
+                '$llm':'give me a 20-word history of the name %(name)s.',
+                'model':'gpt-4.1-nano',
+                '$sub':1
+            },
+            'out': [
+                '@dabois',
+                lambda a,t:f'{dict(t.matchitems("*dabois:*")).values()}',
+                {
+                    '$llm':'90 words, wax poetic over the associations and relatedness between the following names and their origins: \n%($result)s',
+                    'model':'gpt-4.1-nano'
+                }
+            ]
+        }).wait()
+        pprint.pprint(cb._ttable,indent=2)
 
-    cb = chatbraid(model='gpt-4.1-nano')
 
-    cb.run({
-        'query1': {
-            '$llm': 'What is the capital of France?',
-            'model': 'gpt-4.1-mini'
-        },
-        'query2': {
-            '$llm': 'Tell me a joke.'
-            # model and provider default to openai and gpt-4.1-mini
-        },
-        'q3': [
-            '@query1',
-            {'$llm': 'Supposedly, %(query1)s is a fact.  Tell me how it USED to be a fact... 5000 years ago, in the age when man still roamed the Earth.'},
-            {'$llm': 'repeat the following verbatim, except with only nouns: ((%($result)s))... remember, only nouns, comma delimited'}
-        ]
-    }).wait('query1','query2')
-    
-    for k in ('query1','query2'):
-        print(f'{k}: {cb[k]}')
-    
-    cb.wait()
-    
-    for k in cb:
-        print(f'{k}: {cb[k]}')

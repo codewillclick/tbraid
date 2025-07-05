@@ -4,6 +4,7 @@ import re
 import sys
 import json
 import time
+import fnmatch
 import logging
 import threading
 import traceback
@@ -28,7 +29,14 @@ class KeyOverrideAttemptError(Exception): pass
 class NoMatchedFunctionError(Exception): pass
 class WaitTimeoutError(Exception): pass
 
-class tablestack:
+class matchable:
+	def match(self,s):
+		return fnmatch.filter(self.keys(),s)
+	def matchitems(self,s):
+		for k in self.match(s):
+			yield (k,self[k])
+
+class tablestack(matchable):
 	''' Stack of dict-likes, primarily for getter operations, that are all
 	treated like a single dict object, moving down to find keys from the
 	top of the stack to the bottom. '''
@@ -92,7 +100,7 @@ class tablestack:
 		for k,v in self.flat().items():
 			yield (k,v)
 
-class tbraid:
+class tbraid(matchable):
 	def __init__(self,interval=.1,timeout=300,throttle=30):
 		self._sleep = interval
 		self._timeout = timeout
@@ -100,8 +108,12 @@ class tbraid:
 		self._tstack = None
 		self._ttable = None
 		self._matches = []
+		self._matches_pre = []
 		self._akeyid = 0
 		self.reset()
+
+		# Register checks and actions against target objects.
+
 		# Register returning the leftovers as-is.
 		self.register(
 			lambda a:True,
@@ -126,10 +138,15 @@ class tbraid:
 		self.register(
 			lambda a:type(a) is dict and '$run' in a,
 			self._handle_base_run)
+
+		# Now for items that must run before all else on account of meta behavior
+		# against the target object's keys and values.
+
 		# Register foreach object.
 		self.register(
 			lambda a:type(a) is dict and '$foreach' in a,
-			self._handle_base_foreach)
+			self._handle_base_foreach,
+			pre=True)
 	
 	def reset(self):
 		''' Clear out initialized properties, though no killing threads. '''
@@ -137,9 +154,12 @@ class tbraid:
 		self._ttable = {}
 		return self
 	
-	def register(self,check,func):
+	def register(self,check,func,pre=False):
 		''' Add another check and response for specific object types. '''
-		self._matches.append((check,func))
+		if pre:
+			self._matches_pre.append((check,func))
+		else:
+			self._matches.append((check,func))
 		return self
 	
 	def __contains__(self,k):
@@ -226,10 +246,6 @@ class tbraid:
 		logger.debug(f'foreach.items:{items}')
 		akey = self._autokey('foreach:')
 		throt = a['$throttle'] if '$throttle' in a else self._throttle
-		# TODO: '$sub' needs to go in a doc somewhere.
-		# TODO: Maybe move $sub to run(), but simply have $sub prepend all
-		#   normal keys with the parent key, and remove the $sub logic here.
-		subthreads = a['$sub'] if '$sub' in a else False
 		ret = {
 			'$throttle':throt,
 			'$sub':1
@@ -237,18 +253,6 @@ class tbraid:
 		kilen = len(str(len(items)))
 		for i in range(len(items)):
 			key = f'{akey}:%0{kilen}i' % (i,) # 'foreach:x:00i' or such
-			'''
-			if subthreads:
-				# Assign to b everything in a, unless it's a plain thread-key.
-				b = {}
-				for k in a:
-					if k[0] == '$':
-						b[k] = a[k]
-					else:
-						b[f'{key}_{k}'] = a[k]
-				del b['$sub']
-			else:
-			'''
 			if True:
 				b = dict(a)
 				if '$throttle' in b:
@@ -277,7 +281,14 @@ class tbraid:
 	def _find_matchfunc(self,a):
 		# Check for match against register (in reverse order for now, so latest
 		# entries take highest priority).
+		for check,f in self._matches_pre:
+			# Pre registrations run first and in order of addition.
+			assert check
+			assert f
+			if check(a):
+				return f
 		for i in range(len(self._matches)-1,0-1,-1):
+			# Whereas these are reversed.
 			check,f = self._matches[i]
 			assert check
 			assert f
