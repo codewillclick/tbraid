@@ -158,9 +158,8 @@ class chatbraid(tbraid):
             meta = None
             if 'meta' in a and isinstance(a['meta'], dict):
                 meta = a['meta']
-            elif key is not None and hasattr(self, "_ttable") and key in self._ttable:
-                meta = {}
-                self._ttable[key]['meta'] = meta
+                if key is not None and hasattr(self, "_ttable") and key in self._ttable:
+                    self._ttable[key]['meta'] = meta
 
             response = self.llm_manager.call(request_copy, meta=meta)
             logger.info(f'LLM response received')
