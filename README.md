@@ -48,5 +48,5 @@ Tests that auto-write themselves are the real magic of AI-assisted coding.  Even
 - [ ] Move the __main__ test logic to the tests directory
 - [ ] Review the existing unit tests, since many effectively auto-return True
 - [ ] Handle multi-tries and verifies in chainbraid
-- [ ] Add $foreach behavior to apply a map of parameter dicts to the same object
+- [x] Add $foreach behavior to apply a map of parameter dicts to the same object
 
