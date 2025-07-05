@@ -5,6 +5,7 @@ import subprocess
 import json
 import requests
 import openai
+import copy
 from tbraid import tbraid
 from openai import OpenAI
 
@@ -63,7 +64,8 @@ class LLMManager:
             meta['model'] = model
             meta['usage'] = getattr(response, 'usage', None)
             meta['id'] = getattr(response, 'id', None)
-            meta['raw_response'] = response
+            meta['prompt'] = copy.deepcopy(messages)
+            #meta['raw_response'] = response
         return response.choices[0].message.content
 
     def _call_ollama(self, request, meta=None):
@@ -88,7 +90,7 @@ class LLMManager:
             data = json.loads(output)
             if meta is not None:
                 meta['model'] = model
-                meta['raw_response'] = data
+                #meta['raw_response'] = data
             return data.get('response', '')
         except subprocess.CalledProcessError as e:
             logger.error(f"Ollama call failed: {e.stderr}")
