@@ -1,6 +1,7 @@
 .aider*
 
 *.sw?
+session.*
 
 __pycache__
 

@@ -42,6 +42,18 @@ class tablestack:
 		''' Create a copy directly referencing its own stack items. '''
 		return tablestack(*self._stack)
 	
+	def flat(self):
+		''' Return a flat dict reflecting all visible key-val pairs in stack. '''
+		a = {}
+		for b in self._stack:
+			for k in iter(b):
+				logger.debug(f'b ({b}) of self._stack, k ({k})')
+				try:
+					a[k] = b[k]
+				except UnfinishedThreadError:
+					a[k] = None
+		return a
+
 	def __contains__(self,k):
 		try:
 			return not not self[k]
@@ -57,9 +69,21 @@ class tablestack:
 	
 	def __setitem__(self,k,v):
 		self._stack[-1][k] = v
+	
+	def __iter__(self):
+		for k,v in self.flat().items():
+			yield k
+	
+	def keys(self):
+		for k in self.flat().keys():
+			yield k
+	
+	def items(self):
+		for k,v in self.flat().items():
+			yield (k,v)
 
 class tbraid:
-	def __init__(self,interval=.1,timeout=300,throttle=10):
+	def __init__(self,interval=.1,timeout=300,throttle=30):
 		self._sleep = interval
 		self._timeout = timeout
 		self._throttle = throttle
@@ -93,10 +117,9 @@ class tbraid:
 			self._handle_base_run)
 	
 	def reset(self):
-		''' Clear out initialized properties and kill running threads. '''
+		''' Clear out initialized properties, though no killing threads. '''
 		self._tstack = tablestack(self)
 		self._ttable = {}
-		# TODO: See if we need to go and force-kill whatever threads are running.
 		return self
 	
 	def register(self,check,func):
@@ -109,13 +132,21 @@ class tbraid:
 	
 	def __getitem__(self,k):
 		ob = self._ttable[k]
-		if ob['state'] != 'done':
-			raise UnfinishedThreadError(k)
+		#if not (ob['state'] in ('done','error')):
+		#	raise UnfinishedThreadError(k)
 		return ob['value']
 	
 	def __iter__(self):
+		for k,v in self._ttable.items():
+			yield k
+	
+	def keys(self):
 		for k in self._ttable.keys():
 			yield k
+	
+	def items(self):
+		for k,v in self._ttable.items():
+			yield (k,v)
 	
 	def _handle_base_ignore(self,_,a,ts):
 		logger.info(f'_handle_base_ignore {a}')
@@ -133,7 +164,15 @@ class tbraid:
 		logger.info(f'_handle_base_object {a} {ts}')
 		b = dict(a) # <- allow for mutability without affecting source
 		t2 = ts.clone().add({}) # <- same as ^
-		self.run(ob=b,ts=t2)
+		# This thread defaults to waiting until all created sub-threads are done
+		# running before returning, but this can be bypassed with an '$async' flag.
+		asy = '$async' in b and (not not b['$async'])
+		kr = [k for k in b.keys() if k[0] != '$']
+		try:
+			self.run(ob=b,ts=t2)
+		finally:
+			if not asy:
+				self.wait(*kr)
 		if '$result' in t2:
 			return t2['$result']
 		return None
@@ -175,9 +214,13 @@ class tbraid:
 		ob = ob or {}
 		ts = ts or self._tstack
 		tt = tt or self._ttable
+		if type(ob) in (list,tuple):
+			obx = {}
+			obx['$root'] = ob # should only apply to root run object
+			ob = obx
 		for k,v in kw.items():
 			ob[k] = v
-		special = set('$throttle')
+		special = set(['$throttle','$async'])
 		throt = self._throttle
 		if '$throttle' in ob:
 			throt = ob['$throttle']
@@ -246,11 +289,27 @@ if __name__ == '__main__':
 			{'e':5}
 		],
 		'thingo3':{
-			'$run':(lambda *r:time.sleep(1.5))
+			'$run':(lambda *r:time.sleep(.75))
 		}
 	})
 	print('DANG BOI')
 	b.wait()
 	print('BOI DANGO!')
 	pprint.pprint(b._ttable,indent=2)
+
+	c = tbraid().run([
+		{
+			'set':1,
+			'some':2,
+			'vars':3,
+			'here': [
+				{'$run':(lambda *r:time.sleep(.5))},
+				4
+			]
+		},
+		{
+			'$run':lambda a,b:print(a,dict(b))
+		}
+	]).wait()
+	pprint.pprint(c._ttable,indent=2)
 
